@@ -1,0 +1,430 @@
+We have 3 software engineers:
+
+- **Amy’s Work**: Python backend for the to-do list feature, with clean, modular code.
+- **Daniel’s Work**: Bug fixes in retrieval API endpoints, with messy and poorly structured code.
+- **Joe’s Work**: Frontend to-do list in TypeScript, clean but scoped.
+
+### Amy's Contributions (15 Commits)
+
+### Commit History:
+
+1. **2024-11-17 17:56:07** - *"Setup database schema for the to-do list feature."*
+2. **2024-11-16 11:56:07** - *"Add CRUD operations for to-do items."*
+3. **2024-11-16 13:56:07** - *"Implement service methods for creating and retrieving to-do items."*
+4. **2024-11-16 15:56:07** - *"Add unit tests for to-do service."*
+5. **2024-11-16 10:56:07** - *"Improve type hints and docstrings for better maintainability."*
+6. **2024-11-17 13:56:07** - *"Handle edge cases for updating to-do items."*
+7. **2024-11-17 06:56:07** - *"Add input validation for due date and title fields."*
+8. **2024-11-16 07:56:07** - *"Implement error handling for database exceptions."*
+9. **2024-11-16 14:56:07** - *"Optimize query performance for bulk retrieval."*
+10. **2024-11-16 14:56:07** - *"Add repr method for debugging and readability."*
+11. **2024-11-16 17:56:07** - *"Fix a minor bug in delete operation logic."*
+12. **2024-11-17 12:56:07** - *"Update test cases for enhanced coverage."*
+13. **2024-11-17 06:56:07** - *"Add feature toggle for incomplete items only."*
+14. **2024-11-16 07:56:07** - *"Document API endpoints for the to-do list feature."*
+15. **2024-11-17 06:56:07** - *"Finalize feature for PR submission."*
+
+### Code Snippets:
+
+**1. `models/todo.py` (Database Schema):**
+
+```python
+python
+Copy code
+from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class TodoItem(Base):
+    __tablename__ = 'todo_items'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False)
+    description = Column(String(1024), nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    is_completed = Column(Integer, default=0)
+
+    def __repr__(self):
+        return f"<TodoItem(id={self.id}, title={self.title})>"
+
+```
+
+**2. `services/todo_service.py` (CRUD Operations):**
+
+```python
+python
+Copy code
+from models.todo import TodoItem
+from sqlalchemy.orm import Session
+
+def create_todo(session: Session, title: str, description: str = None, due_date: str = None):
+    todo_item = TodoItem(title=title, description=description, due_date=due_date)
+    session.add(todo_item)
+    session.commit()
+    return todo_item
+
+def get_todo(session: Session, todo_id: int):
+    return session.query(TodoItem).filter(TodoItem.id == todo_id).first()
+
+def update_todo(session: Session, todo_id: int, **kwargs):
+    todo_item = get_todo(session, todo_id)
+    if not todo_item:
+        return None
+    for key, value in kwargs.items():
+        setattr(todo_item, key, value)
+    session.commit()
+    return todo_item
+
+def delete_todo(session: Session, todo_id: int):
+    todo_item = get_todo(session, todo_id)
+    if not todo_item:
+        return False
+    session.delete(todo_item)
+    session.commit()
+    return True
+
+```
+
+**3. `tests/test_todo_service.py` (Unit Tests):**
+
+```python
+python
+Copy code
+import pytest
+from services.todo_service import create_todo, get_todo, update_todo, delete_todo
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models.todo import Base
+
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    return Session()
+
+def test_create_todo(session):
+    todo = create_todo(session, title="Test Task", description="Testing", due_date="2024-11-30")
+    assert todo.id is not None
+    assert todo.title == "Test Task"
+
+def test_get_todo(session):
+    todo = create_todo(session, title="Test Task")
+    fetched = get_todo(session, todo.id)
+    assert fetched.title == "Test Task"
+
+def test_update_todo(session):
+    todo = create_todo(session, title="Test Task")
+    updated = update_todo(session, todo.id, title="Updated Task")
+    assert updated.title == "Updated Task"
+
+def test_delete_todo(session):
+    todo = create_todo(session, title="Test Task")
+    result = delete_todo(session, todo.id)
+    assert result is True
+
+```
+
+========================================================================
+
+### Daniel's Contributions (12 Commits)
+
+### Commit History:
+
+1. **2024-11-16 15:04:11** - *"Fix retrieval API for to-do items."*
+2. **2024-11-16 04:04:11** - *"Patch for incorrect error handling in retrieval API."*
+3. **2024-11-16 11:04:11** - *"Added pagination to to-do retrieval (incomplete)."*
+4. **2024-11-16 03:04:11** - *"Refactor query filters."*
+5. **2024-11-16 09:04:11** - *"Resolve API response inconsistency issue."*
+6. **2024-11-16 07:04:11** - *"Basic testing for retrieval API endpoints."*
+7. **2024-11-17 09:04:11** - *"Fix edge case for non-existent IDs."*
+8. **2024-11-16 21:04:11** - *"Missing session close in pagination."*
+9. **2024-11-17 07:04:11** - *"Handle type conversion error for IDs."*
+10. **2024-11-17 08:04:11** - *"Address comments about API response format."*
+11. **2024-11-16 03:04:11** - *"Add basic comments."*
+12. **2024-11-16 16:04:11** - *"PR update with minor fixes in retrieval API."*
+
+### Code Snippets:
+
+**1. `api/retrieval.py` (Retrieval API):**
+
+```python
+python
+Copy code
+from flask import Flask, jsonify, request
+from models.todo import TodoItem
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+
+engine = create_engine("sqlite:///example.db")
+Session = sessionmaker(bind=engine)
+app = Flask(__name__)
+
+@app.route('/api/todos/<int:id>', methods=['GET'])
+def get_todo_by_id(id):
+   session=Session()
+   todo=session.query(TodoItem).filter(TodoItem.id==id).first()
+   if not todo:
+      return jsonify({"error":"todo not found"}),404
+   return jsonify({"id":todo.id,"title":todo.title,"description":todo.description,"due_date":str(todo.due_date),"is_completed":todo.is_completed})
+
+```
+
+**2. `api/pagination.py` (Pagination Code):**
+
+```python
+python
+Copy code
+from flask import Flask, request, jsonify
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from models.todo import TodoItem
+
+engine = create_engine("sqlite:///example.db")
+Session = sessionmaker(bind=engine)
+app = Flask(__name__)
+
+@app.route('/api/todos', methods=['GET'])
+def get_paginated_todos():
+    session = Session()
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 10))
+        offset = (page - 1) * per_page
+        todos = session.query(TodoItem).offset(offset).limit(per_page).all()
+        result = []
+        for todo in todos:
+            result.append({
+                "id": todo.id,
+                "title": todo.title,
+                "description": todo.description,
+                "due_date": str(todo.due_date),
+                "is_completed": todo.is_completed
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+```
+
+**3. `api/response_fix.py` (Fixed Response Format):**
+
+```python
+python
+Copy code
+from flask import Flask, jsonify
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from models.todo import TodoItem
+
+engine = create_engine("sqlite:///example.db")
+Session = sessionmaker(bind=engine)
+app = Flask(__name__)
+
+@app.route('/api/todos/<int:id>', methods=['GET'])
+def fixed_get_todo_by_id(id):
+    session = Session()
+    todo = session.query(TodoItem).filter(TodoItem.id == id).first()
+    if not todo:
+        return jsonify({"status": "failure", "message": "To-do item not found"})
+    return jsonify({"status": "success", "data": {
+        "id": todo.id,
+        "title": todo.title,
+        "description": todo.description,
+        "due_date": str(todo.due_date),
+        "is_completed": todo.is_completed
+    }})
+
+```
+
+PR reviews Daneil got: 
+
+Below are the comments provided during the code review for Daniel's contributions. These comments reflect feedback from Amy, a senior engineer, focusing on improving code quality and consistency.
+
+---
+
+### Feedback for `api/retrieval.py`
+
+**Reviewer:** *Amy*
+
+**Comment:**
+
+- "The function `get_todo_by_id` is missing proper exception handling. Please ensure that the session is properly closed even in case of errors."
+- "Indentation for the code block inside the `if not todo` condition is inconsistent. Consider formatting this to align with PEP 8 standards."
+- "The response structure can be standardized. For example, even in error cases, include a status field to match the success responses."
+
+---
+
+### Feedback for `api/pagination.py`
+
+**Reviewer:** *Amy*
+
+**Comment:**
+
+- "Ensure that the session is closed after the query execution to prevent resource leaks."
+- "Consider extracting the pagination logic into a helper function to improve code readability and reusability."
+- "The exception handling block is too generic. Use specific exception types where possible to provide more meaningful error messages."
+- "Some variables, like `result`, could benefit from a more descriptive name to indicate their purpose, e.g., `todos_list`."
+
+---
+
+### Feedback for `api/response_fix.py`
+
+**Reviewer:** *Amy*
+
+**Comment:**
+
+- "The structure of the success response is well-organized, but consider adding a `timestamp` field to help clients handle stale responses."
+- "Use a context manager (`with session:`) instead of manually opening and closing sessions. This ensures proper cleanup and makes the code less error-prone."
+- "Avoid hardcoding the string keys in the response dictionary repeatedly. Define constants or use a response formatter function to avoid typos and improve maintainability."
+
+=======================================================================
+
+### Joe’s contribution(18 commits)
+
+- **2024-11-16 10:09:58** - *"Initialize Todo List component and set up state management for todos."*
+- **2024-11-16 19:09:58** - *"Implement API call to fetch todos in TodoList component and handle loading state."*
+- **2024-11-17 02:09:58** - *"Fix error handling for failed API request in TodoList component."*
+- **2024-11-15 23:09:58** - *"Refactor TodoList component to map through todos and display titles and descriptions."*
+- **2024-11-16 19:09:58** - *"Add conditional rendering for loading state in TodoList component."*
+- **2024-11-17 20:09:58** - *"Update TodoList component to handle empty todos array gracefully."*
+- **2024-11-16 02:09:58** - *"Add TodoForm component to handle adding new todos to the list."*
+- **2024-11-16 11:09:58** - *"Connect TodoForm component to backend API to add new todo items."*
+- **2024-11-17 15:09:58** - *"Implement form validation in TodoForm component before submitting data."*
+- **2024-11-16 16:09:58** - *"Refactor TodoForm component to reset input fields after successful submission."*
+- **2024-11-16 03:09:58** - *"Add error handling to TodoForm for failed todo creation."*
+- **2024-11-15 22:09:58** - *"Implement TodoItem component to display individual todo items."*
+- **2024-11-16 03:09:58** - *"Style TodoItem component for improved UI with basic CSS classes."*
+- **2024-11-15 21:09:58** - *"Integrate TodoItem component into TodoList component for rendering each todo."*
+- **2024-11-16 16:09:58** - *"Refactor TodoItem component to display due date and status for each todo."*
+- **2024-11-17 13:09:58** - *"Add basic styling to TodoList and TodoItem components for better layout."*
+- **2024-11-16 21:09:58** - *"Fix layout issue in TodoList component by adjusting list item spacing."*
+- **2024-11-16 00:09:58** - *"Implement status display in TodoItem component to show completion status of todos."*
+
+### Code Snippets:
+
+**1. `src/components/TodoList.tsx` (Todo List Component):**
+
+```tsx
+tsx
+Copy code
+import React, { useState, useEffect } from 'react';
+import { TodoItem } from '../types';
+
+const TodoList: React.FC = () => {
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        const response = await fetch('/api/todos');
+        if (!response.ok) throw new Error('Failed to fetch todos');
+        const data = await response.json();
+        setTodos(data);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTodos();
+  }, []);
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h1>Todo List</h1>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <strong>{todo.title}</strong>: {todo.description}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+export default TodoList;
+
+```
+
+**2. `src/components/TodoForm.tsx` (Todo Form for Adding New Todos):**
+
+```tsx
+tsx
+Copy code
+import React, { useState } from 'react';
+
+const TodoForm: React.FC = () => {
+  const [title, setTitle] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      const response = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description }),
+      });
+      if (!response.ok) throw new Error('Failed to create todo');
+      setTitle('');
+      setDescription('');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Todo Title"
+        required
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Todo Description"
+        required
+      />
+      <button type="submit">Add Todo</button>
+    </form>
+  );
+};
+
+export default TodoForm;
+
+```
+
+**3. `src/components/TodoItem.tsx` (Todo Item Component for Display):**
+
+```tsx
+tsx
+Copy code
+import React from 'react';
+import { TodoItem } from '../types';
+
+interface TodoItemProps {
+  todo: TodoItem;
+}
+
+const TodoItemComponent: React.FC<TodoItemProps> = ({ todo }) => {
+  return (
+    <div className="todo-item">
+      <h2>{todo.title}</h2>
+      <p>{todo.description}</p>
+      <p><strong>Due Date:</strong> {new Date(todo.due_date).toLocaleDateString()}</p>
+      <p><strong>Status:</strong> {todo.is_completed ? 'Completed' : 'Pending'}</p>
+    </div>
+  );
+};
+
+export default TodoItemComponent;
+
+```
